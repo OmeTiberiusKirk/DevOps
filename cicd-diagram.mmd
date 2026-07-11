@@ -1,0 +1,60 @@
+graph TB
+    %% Styles and Colors of Objects
+    classDef external fill:#00117f;
+    classDef runner fill:#edb920,stroke:#333,stroke-width:2px,color:#000;
+    classDef cluster fill:#c32b10,stroke:#333,stroke-width:2px;
+    classDef lb fill:#167e01;
+    classDef client fill:#c3c3c3,color:#000;
+
+    style Internet fill:#575757
+    style Intranet fill:#575757
+    style RKE2_Cluster fill:#292929
+    style Gateway_Machine fill:#292929
+
+    %% Internet zone
+    subgraph Internet [Internet Zone]
+        GH[GitHub / GitHub Actions]:::external
+    end
+
+    %% Intranet zone (DMZ / Private Network)
+    subgraph Intranet [Private Network - วงภายใน]
+        
+        %% Runner / Registry
+        subgraph Gateway_Machine [Runner - ออกเน็ตได้เครื่องเดียว]
+            163_Runner[GitHub Runner<br>172.16.33.163]:::runner
+            163_Reg[Private Container Registry]:::runner
+        end
+
+        %% Nginx Load balancer
+        156_Nginx[Nginx Load Balancer<br>172.16.33.156]:::lb
+
+        %% RKE2 Cluster Zone
+        subgraph RKE2_Cluster [RKE2 Private Cluster]
+            157_Master[RKE2 Master/Workload<br>172.16.33.157]:::cluster
+            158_Worker[Worker UAT 01<br>172.16.33.158]:::cluster
+            159_Worker[Worker UAT 02<br>172.16.33.159]:::cluster
+        end
+    end
+
+    %% Connections and Data Flow
+    %% 1. CI/CD Flow
+    GH <== HTTPS Outbound ==> 163_Runner
+    163_Runner -- Build & Push Image --> 163_Reg
+    163_Runner -- Deploy via kubectl<br>Port 6443 --> 157_Master
+
+    %% 2. Cluster Pull Image (Internal Only)
+    157_Master -- Pull Image<br>Port 5000 --> 163_Reg
+    158_Worker -- Pull Image<br>Port 5000 --> 163_Reg
+    159_Worker -- Pull Image<br>Port 5000 --> 163_Reg
+
+    %% 3. User Traffic / Load Balance
+    User((Users / Clients)):::client ==> |Port 443| 156_Nginx
+    156_Nginx --> |HTTP/HTTPS Traffic| 157_Master
+    156_Nginx --> |HTTP/HTTPS Traffic| 158_Worker
+    156_Nginx --> |HTTP/HTTPS Traffic| 159_Worker
+
+    %% Network access lines
+    linkStyle 0 stroke:#ff3333,stroke-width:2px;
+    linkStyle 1,2 stroke:#33cc33,stroke-width:2px;
+    linkStyle 3,4,5 stroke:#3399ff,stroke-width:2px;
+    linkStyle 6,7,8,9 stroke:#ffa500,stroke-width:2px;
