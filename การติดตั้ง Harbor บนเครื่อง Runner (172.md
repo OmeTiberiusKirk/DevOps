@@ -56,7 +56,7 @@ openssl req -sha256 -new \
   -subj "/CN=harbor.local"
 
 # 5. สร้าง x509 v3 extension file เพื่อรองรับ IP และ Domain
-cat > v3.ext <<-EOF
+sudo tee v3.ext > /dev/null <<EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
 keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
