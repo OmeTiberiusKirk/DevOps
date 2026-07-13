@@ -1,6 +1,6 @@
 #!/bin/bash
 
-RUNNER_IP=harbor.local
+RUNNER_IP=192.168.122.167
 
 echo "Login Docker ที่ $RUNNER_IP"
 docker login https://$RUNNER_IP -u admin
@@ -15,8 +15,8 @@ if [ -n "$(docker images -q "$IMAGE" 2>/dev/null)" ]; then
 else
 	echo "❌ [WARNING] ไม่พบ Docker Image: $IMAGE ในเครื่องนี้"
 	docker pull $IMAGE
-	docker tag $IMAGE harbor.local/argocd/argocd:$VERSION
-	docker push harbor.local/argocd/argocd:$VERSION
+	docker tag $IMAGE $RUNNER_IP/argocd/argocd:$VERSION
+	docker push $RUNNER_IP/argocd/argocd:$VERSION
 fi
 
 # Dex
@@ -27,8 +27,8 @@ if [ -n "$(docker images -q "$IMAGE" 2>/dev/null)" ]; then
 else
 	echo "❌ [WARNING] ไม่พบ Docker Image: $IMAGE ในเครื่องนี้"
 	docker pull $IMAGE
-	docker tag $IMAGE harbor.local/argocd/dex:$VERSION
-	docker push harbor.local/argocd/dex:$VERSION
+	docker tag $IMAGE $RUNNER_IP/argocd/dex:$VERSION
+	docker push $RUNNER_IP/argocd/dex:$VERSION
 fi
 
 
@@ -40,6 +40,6 @@ if [ -n "$(docker images -q "$IMAGE" 2>/dev/null)" ]; then
 else
 	echo "❌ [WARNING] ไม่พบ Docker Image: $IMAGE ในเครื่องนี้"
 	docker pull $IMAGE
-	docker tag $IMAGE harbor.local/argocd/redis:$VERSION
-	docker push harbor.local/argocd/redis:$VERSION
+	docker tag $IMAGE $RUNNER_IP/argocd/redis:$VERSION
+	docker push $RUNNER_IP/argocd/redis:$VERSION
 fi

@@ -134,7 +134,6 @@ Harbor มีฟีเจอร์เด่นคือ **Trivy (Vulnerability S
 sudo mkdir -p /etc/docker/certs.d/harbor.local/
 sudo cp /data/cert/ca.crt /etc/docker/certs.d/harbor.local/ca.crt
 sudo systemctl restart docker
-
 ```
 
 *ทดสอบ:* รันคำสั่ง `docker login harbor.local` บนเครื่อง Runner ต้อง Login ผ่าน
