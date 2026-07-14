@@ -131,8 +131,10 @@ Harbor มีฟีเจอร์เด่นคือ **Trivy (Vulnerability S
 ### 1. ตั้งค่าที่เครื่อง Runner ตัวเอง (เพื่อให้ Docker Push ได้)
 
 ```bash
-sudo mkdir -p /etc/docker/certs.d/harbor.local/
-sudo cp /data/cert/ca.crt /etc/docker/certs.d/harbor.local/ca.crt
+sudo mkdir -p /etc/docker/certs.d/harbor.local/ && \
+sudo cp /data/cert/ca.crt /etc/docker/certs.d/harbor.local/ && \
+sudo cp /data/cert/ca.crt /usr/local/share/ca-certificates/harbor-ca.crt && \
+sudo update-ca-certificates \ &&
 sudo systemctl restart docker
 ```
 
