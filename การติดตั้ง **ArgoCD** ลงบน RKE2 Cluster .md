@@ -19,8 +19,7 @@ curl -sSL -o argocd-install.yaml https://raw.githubusercontent.com/argoproj/argo
 
 2. ส่งไฟล์ `argocd-install.yaml` ข้ามไปยังเครื่อง **Master Node (`172.16.33.157`)** ด้วย `scp`:
 ```bash
-scp argocd-install.yaml user@172.16.33.157:/tmp/
-
+scp argocd-install.yaml mastereserviceplus@192.168.2.71:/tmp/
 ```
 
 
