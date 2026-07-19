@@ -1,6 +1,6 @@
 #!/bin/bash
 
-RUNNER_IP="harbor.local"
+RUNNER_IP="registry.local"
 
 echo "Login Docker ที่ $RUNNER_IP"
 docker login https://$RUNNER_IP -u admin

@@ -1,0 +1,160 @@
+สำหรับการจัดการ **SSL Certificate** บน **Traefik Ingress Controller** ภายใน Kubernetes (RKE2) ให้สอดคล้องกับระบบที่มีข้อจำกัดการออกเน็ต (Private / Hybrid Air-Gapped) การตั้งค่าจะแบ่งออกเป็น **2 รูปแบบหลัก** ตามความเหมาะสมของสภาพแวดล้อมระบบของคุณครับ:
+
+---
+
+## รูปแบบที่ 1: การใช้ Custom / Private Certificate (แนะนำสำหรับ Air-Gapped / Private Network)
+
+เนื่องจากระบบของคุณไม่สามารถเชื่อมต่อออกไปหา Certificate Authority (CA) ภายนอกเช่น Let's Encrypt ได้โดยง่าย วิธีที่ดีที่สุดคือการนำ SSL Certificate ที่มีอยู่แล้ว (เช่น Wildcard Cert หรือ Cert ที่ออกโดย Internal CA) มาติดตั้งเข้าระบบเอง
+
+### ขั้นตอนที่ 1: สร้าง Kubernetes TLS Secret
+
+นำไฟล์ Certificate (`.crt` หรือ `.pem`) และ Private Key (`.key`) มาสร้างเป็น Secret ไว้ใน Namespace เดียวกันกับแอปพลิเคชัน Next.js (หรือ Namespace ที่ใช้รัน Ingress)
+
+```bash
+kubectl create secret tls nextjs-tls-secret \
+  --cert=path/to/yourdomain.crt \
+  --key=path/to/yourdomain.key \
+  -n <your-namespace>
+
+```
+
+### ขั้นตอนที่ 2: ตั้งค่า Traefik `IngressRoute` (CRD) ให้เรียกใช้ Secret
+
+หากคุณใช้ Resource แบบ `IngressRoute` ของ Traefik ให้กำหนดค่าในส่วนของ `tls` และอ้างอิงชื่อ `secretName` ดังนี้:
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: nextjs-ingress
+  namespace: <your-namespace>
+spec:
+  entryPoints:
+    - websecure # พอร์ต 443 (มักถูกกำหนดไว้ใน Traefik default)
+  routes:
+    - match: Host(`yourdomain.com`)
+      kind: Rule
+      services:
+        - name: nextjs-service # ชื่อ Service ของแอป Next.js
+          port: 3000          # พอร์ตของ Service
+  tls:
+    secretName: nextjs-tls-secret # อ้างอิง Secret ที่สร้างในขั้นตอนที่ 1
+
+```
+
+*(หากใช้ Standard Kubernetes `Ingress` ปกติ ให้ระบุใน `spec.tls[].secretName` ได้เช่นเดียวกัน)*
+
+---
+
+## รูปแบบที่ 2: การตั้งค่า Default Certificate ให้ Traefik (Best Practice สำหรับทั้ง Cluster)
+
+โดยปกติ หากผู้ใช้เรียกเข้ามาด้วย IP หรือโดเมนที่ไม่มีการระบุ SSL ไว้ชัดเจน Traefik จะส่ง Cert ปลอมกลับไป (`TRAEFIK DEFAULT CERT`) ซึ่งจะทำให้เบราว์เซอร์แจ้งเตือนว่าไม่ปลอดภัย
+
+เพื่อความเรียบร้อยและปลอดภัย คุณควรตั้งค่า **Default TLS Certificate** ให้กับ Traefik ด้วยการใช้ **`TLSStore`** ครับ
+
+### ขั้นตอนที่ 1: สร้าง Secret สำหรับ Default SSL (สร้างไว้ที่ Namespace ของ Traefik)
+
+โดยส่วนใหญ่บน RKE2 ตัว Traefik จะทำงานอยู่ใน namespace `kube-system` หรือ `traefik`
+
+```bash
+kubectl create secret tls default-ingress-cert \
+  --cert=path/to/wildcard-domain.crt \
+  --key=path/to/wildcard-domain.key \
+  -n kube-system # หรือ namespace ที่ Traefik ติดตั้งอยู่
+
+```
+
+### ขั้นตอนที่ 2: สร้างไฟล์ `TLSStore` ของ Traefik
+
+สร้างไฟล์ `traefik-tls-store.yaml` เพื่อกำหนดให้ Secret ข้างต้นเป็น Default สำหรับทุกโดเมนที่ไม่ได้ระบุ Cert เจาะจง:
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: kube-system # ต้องเป็น namespace เดียวกับที่ติดตั้ง Traefik
+spec:
+  defaultCertificate:
+    secretName: default-ingress-cert
+
+```
+
+สั่งรันไฟล์ด้วยคำสั่ง:
+
+```bash
+kubectl apply -f traefik-tls-store.yaml
+
+```
+
+*(หมายเหตุ: Traefik จะยอมรับเฉพาะ TLSStore ที่มีชื่อว่า `default` เท่านั้น)*
+
+---
+
+## รูปแบบที่ 3: การใช้ Cert-Manager สำหรับ Auto-Renew (แนะนำเฉพาะกรณีที่ชี้โดนเมนและเชื่อมต่อภายนอกได้)
+
+หากโดเมนของคุณสามารถเข้าถึงได้จากอินเทอร์เน็ตสาธารณะ และคุณต้องการทำ Auto-Renew SSL (ผ่าน Let's Encrypt) แนะนำให้ติดตั้ง **Cert-Manager** ลงใน Cluster
+
+### ขั้นตอนที่ 1: ติดตั้ง Cert-Manager
+
+```bash
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.0/cert-manager.yaml
+
+```
+
+### ขั้นตอนที่ 2: สร้าง ClusterIssuer (ใช้ HTTP-01 หรือ DNS-01 Challenge)
+
+ในกรณีที่มีเครื่องออกนอกเน็ตได้ผ่าน proxy/gateway อาจต้องเซต proxy ให้กับ cert-manager ด้วย ตัวอย่างการทำ HTTP-01 Challenge:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: your-email@example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-private-key
+    solvers:
+      - http01:
+          ingress:
+            ingressTemplate:
+              metadata:
+                annotations:
+                  kubernetes.io/ingress.class: traefik
+
+```
+
+### ขั้นตอนที่ 3: ออก Certificate อัตโนมัติใน Ingress
+
+เมื่อมี ClusterIssuer แล้ว คุณเพียงแค่เขียน Ingress ปกติ และใส่ Annotations เพื่อให้ Cert-Manager ไปคุยกับ Let's Encrypt และสร้าง Secret ให้ Traefik ใช้งานโดยอัตโนมัติ:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nextjs-ingress
+  namespace: <your-namespace>
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod" # อ้างอิง Issuer ด้านบน
+    kubernetes.io/ingress.class: "traefik"
+spec:
+  tls:
+    - hosts:
+        - yourdomain.com
+      secretName: nextjs-auto-tls-secret # cert-manager จะสร้างและอัปเดตไฟล์นี้ให้เอง
+  rules:
+    - host: yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nextjs-service
+                port:
+                  number: 3000
+
+```

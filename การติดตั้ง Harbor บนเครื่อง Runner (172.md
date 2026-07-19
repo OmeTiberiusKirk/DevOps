@@ -20,10 +20,10 @@
 
 ```bash
 # ดาวน์โหลด Harbor Installer
-wget https://github.com/goharbor/harbor/releases/download/v2.11.0/harbor-online-installer-v2.11.0.tgz
+wget https://github.com/goharbor/harbor/releases/download/v2.15.2/harbor-offline-installer-v2.15.2.tgz
 
 # แตกไฟล์
-tar -xvf harbor-online-installer-v2.11.0.tgz
+tar -xvf harbor-offline-installer-v2.15.2.tgz
 cd harbor
 
 ```
@@ -35,30 +35,36 @@ Docker และ Kubernetes (RKE2) จะไม่ยอมให้ดึง Im
 ให้สร้าง Self-Signed Certificate ขึ้นมาใช้งานภายในวงดังนี้:
 
 ```bash
+# 1. กำหนดตัวแปรระบบ (ปรับเปลี่ยนโดเมนและ IP ตามจริงของคุณ)
 DOMAIN="registry.local"
-IP="<local registry ip>"
+IP="172.16.33.163"
 
-sudo mkdir -p /data/cert && cd /data/cert
+# 2. สร้างโฟลเดอร์แยกเก็บอย่างเป็นระเบียบ
+sudo mkdir -p /data/cert/ca
+sudo mkdir -p /data/cert/services
+cd /data/cert
 
-# 1. สร้าง Private Key สำหรับ CA
-sudo openssl genrsa -out ca.key 4096
+# 3. สร้าง Root CA ขององค์กร (สำหรับแจกจ่ายให้เครื่องอื่น)
+# คีย์ส่วนตัวของ CA
+sudo openssl genrsa -out ca/company-internal-ca.key 4096
 
-# 2. สร้าง CA Certificate (ใส่ข้อมูลจำลองได้เลย)
+# ใบรับรองของ CA (ใส่ข้อมูล CN เพื่อบอกว่าเป็น CA ของบริษัท)
 sudo openssl req -x509 -new -nodes -sha256 -days 3650 \
-  -key ca.key \
-  -out ca.crt \
-  -subj "/CN=$DOMAIN"
+  -key ca/company-internal-ca.key \
+  -out ca/company-internal-ca.crt \
+  -subj "/CN=Company Internal CA"
 
-# 3. สร้าง Private Key สำหรับ Harbor
-sudo openssl genrsa -out $DOMAIN.key 4096
+# 4. สร้าง Certificate สำหรับบริการ Harbor (เซ็นโดย CA ด้านบน)
+# คีย์ส่วนตัวของ Harbor
+sudo openssl genrsa -out services/$DOMAIN.key 4096
 
-# 4. สร้าง Certificate Signing Request (CSR)
+# สร้างคำขอใบรับรอง (CSR)
 sudo openssl req -sha256 -new \
-  -key $DOMAIN.key \
-  -out $DOMAIN.csr \
+  -key services/$DOMAIN.key \
+  -out services/$DOMAIN.csr \
   -subj "/CN=$DOMAIN"
 
-# 5. สร้าง x509 v3 extension file เพื่อรองรับ IP และ Domain
+# 5. สร้าง x509 v3 extension เพื่อผูกกับ Domain และ IP
 sudo tee v3.ext > /dev/null <<EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
@@ -70,12 +76,12 @@ DNS.1=$DOMAIN
 IP.1=$IP
 EOF
 
-# 6. ออกใบ Certificate ให้ Harbor
+# 6. ใช้ Root CA เซ็นออกใบ Certificate จริงให้ Harbor
 sudo openssl x509 -req -sha256 -days 3650 \
   -extfile v3.ext \
-  -in $DOMAIN.csr \
-  -CA ca.crt -CAkey ca.key -CAcreateserial \
-  -out $DOMAIN.crt
+  -in services/$DOMAIN.csr \
+  -CA ca/company-internal-ca.crt -CAkey ca/company-internal-ca.key -CAcreateserial \
+  -out services/$DOMAIN.crt
 ```
 
 ### Step 3: คอนฟิกไฟล์ `harbor.yml`
@@ -101,15 +107,14 @@ http:
 
 https:
   port: 443
-  certificate: /data/cert/registry.local.crt
-  private_key: /data/cert/registry.local.key
+  certificate: /data/cert/services/registry.local.crt
+  private_key: /data/cert/services/registry.local.key
 
 # รหัสผ่านสำหรับ Admin หน้าเว็บ (แนะนำให้เปลี่ยนจาก default)
-harbor_admin_password: YourSecurePassword123
+harbor_admin_password: P@ssw0rd
 
 # ที่เก็บข้อมูลของ Harbor (Image, Database, Logs)
-data_volume: /data
-
+data_volume: /data/harbor
 ```
 
 ### Step 4: สั่งรันคำสั่ง ติดตั้ง
@@ -119,7 +124,6 @@ Harbor มีฟีเจอร์เด่นคือ **Trivy (Vulnerability S
 ```bash
 # รัน Script ติดตั้งพร้อมติดตั้ง Trivy Scanner
 ./install.sh --with-trivy
-
 ```
 
 ถ้าระบบรันเสร็จสิ้น จะขึ้นข้อความว่า `----Harbor has been installed and started successfully.----` คุณจะสามารถเข้าหน้าเว็บผ่าน `https://172.16.33.163` หรือ `https://registry.local` ด้วยสิทธิ์ `admin` ได้ทันที
@@ -133,11 +137,14 @@ Harbor มีฟีเจอร์เด่นคือ **Trivy (Vulnerability S
 ### 1. ตั้งค่าที่เครื่อง Runner ตัวเอง (เพื่อให้ Docker Push ได้)
 
 ```bash
+# สำหรับ docker
 sudo mkdir -p /etc/docker/certs.d/registry.local/ && \
-sudo cp /data/cert/ca.crt /etc/docker/certs.d/registry.local/ && \
-sudo cp /data/cert/ca.crt /usr/local/share/ca-certificates/ && \
-sudo update-ca-certificates && \
+sudo cp /data/cert/services/registry.local.crt /etc/docker/certs.d/registry.local/ && \
 sudo systemctl restart docker
+
+# เครื่อง master
+sudo cp /data/cert/ca/company-internal-ca.crt /usr/local/share/ca-certificates/ && \
+sudo update-ca-certificates
 ```
 
 *ทดสอบ:* รันคำสั่ง `docker login registry.local` บนเครื่อง Runner ต้อง Login ผ่าน
@@ -149,8 +156,9 @@ sudo systemctl restart docker
 ```bash
 # รันคำสั่งนี้บนเครื่อง Master และ Worker ทุกเครื่อง
 sudo mkdir -p /usr/local/share/ca-certificates/
+
 # ก๊อปปี้ไฟล์ ca.crt จากเครื่อง runner มาวางที่นี่ (ใช้ scp ย้ายมา)
-sudo cp ca.crt /usr/local/share/ca-certificates/harbor-ca.crt
+sudo cp company-internal-ca.crt /usr/local/share/ca-certificates/company-internal-ca.crt
 
 # อัปเดตเพื่อให้ OS รู้จัก Cert นี้
 sudo update-ca-certificates
@@ -158,7 +166,6 @@ sudo update-ca-certificates
 # รีสตาร์ทเซอร์วิสของ RKE2 เพื่อโหลดค่า Cert ใหม่
 # (ถ้าเป็นเครื่อง Master ให้เปลี่ยนเป็น rke2-server)
 sudo systemctl restart rke2-agent
-
 ```
 
 เพียงเท่านี้ เครื่อง Runner ก็จะมี Harbor OCI Registry ที่พร้อมรันยาวๆ และปลอดภัย พร้อมให้ GitHub Actions และ ArgoCD เข้ามาดึงไปใช้งานแล้วครับ

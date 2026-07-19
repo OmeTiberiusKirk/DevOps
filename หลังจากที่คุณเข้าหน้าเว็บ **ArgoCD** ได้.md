@@ -40,7 +40,6 @@ kubectl create secret docker-registry harbor-registry-secret \
   --docker-username=<HARBOR_USER> \
   --docker-password=<HARBOR_PASSWORD> \
   -n default
-
 ```
 
 *(ในไฟล์ `Deployment.yaml` ของ Next.js อย่าลืมใส่ `imagePullSecrets: [{name: harbor-registry-secret}]`)*
