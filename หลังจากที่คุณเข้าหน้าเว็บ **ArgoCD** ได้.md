@@ -35,11 +35,11 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 รันคำสั่งนี้ที่เครื่อง **Master Node** (เปลี่ยน user/password ให้ตรงกับของ Harbor):
 
 ```bash
-kubectl create secret docker-registry harbor-registry-secret \
-  --docker-server=172.16.33.163 \
-  --docker-username=<HARBOR_USER> \
-  --docker-password=<HARBOR_PASSWORD> \
-  -n default
+kubectl create secret docker-registry local-registry \
+  --docker-server=registry.local \
+  --docker-username=admin \
+  --docker-password=P@ssword \
+  -n esp
 ```
 
 *(ในไฟล์ `Deployment.yaml` ของ Next.js อย่าลืมใส่ `imagePullSecrets: [{name: harbor-registry-secret}]`)*

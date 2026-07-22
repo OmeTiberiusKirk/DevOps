@@ -1,1 +1,1 @@
-docker run --name some-postgres -e POSTGRES_PASSWORD=mysecretpassword -d postgres
+docker run -d --name esp-db -e POSTGRES_PASSWORD=123qwe -p 5432:5432 postgres
